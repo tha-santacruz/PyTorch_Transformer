@@ -8,6 +8,7 @@ from torch.utils.data import DataLoader
 from tokenizer import get_tokenizer
 
 def _count_generator(reader):
+    """from https://pynative.com/python-count-number-of-lines-in-file/"""
     b = reader(1024 * 1024)
     while b:
         yield b
@@ -20,15 +21,9 @@ class OpusTranslationDataset():
         self.text_file_target = [fname for fname in os.listdir(f"data/{self.dataset_name}/") if fname.endswith(language_target)][0]
         self.vocab_size = vocab_size
         self.sequence_length = sequence_length
-        self.tokenizer_source = get_tokenizer(
-            tokenizer_path=f"tokenizers/{self.dataset_name}_{language_source}",
-            reference_corpora=f"data/{self.dataset_name}/{self.text_file_source}",
-            vocab_size=self.vocab_size,
-            sequence_length=self.sequence_length
-        )
-        self.tokenizer_target = get_tokenizer(
-            tokenizer_path=f"tokenizers/{self.dataset_name}_{language_target}",
-            reference_corpora=f"data/{self.dataset_name}/{self.text_file_target}",
+        self.tokenizer = get_tokenizer(
+            tokenizer_path=f"tokenizers/{self.dataset_name}",
+            reference_corpora=[f"data/{self.dataset_name}/{self.text_file_source}", f"data/{self.dataset_name}/{self.text_file_target}"],
             vocab_size=self.vocab_size,
             sequence_length=self.sequence_length
         )
@@ -57,8 +52,8 @@ class OpusTranslationDataset():
         line_num = self.indices["set"][idx]
         line_source = linecache.getline(f"data/{self.dataset_name}/{self.text_file_source}", line_num)[:-2] # to remove space and \n at the end
         line_target = linecache.getline(f"data/{self.dataset_name}/{self.text_file_target}", line_num)[:-2]
-        tokenized_source = self.tokenizer_source.encode(line_source)
-        tokenized_target = self.tokenizer_target.encode(line_target)
+        tokenized_source = self.tokenizer.encode(line_source)
+        tokenized_target = self.tokenizer.encode(line_target)
         source_ids = torch.tensor(tokenized_source.ids)
         source_mask = torch.tensor(tokenized_source.attention_mask)
         target_ids = torch.tensor(tokenized_target.ids)
