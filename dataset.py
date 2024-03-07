@@ -43,7 +43,7 @@ class OpusTranslationDataset():
         self.indices["train"] = self.indices["all"][20000::]
 
     def __len__(self):
-        return self.num_examples
+        return len(self.indices["set"])
     
     def use_set(self, set_name):
         self.indices["set"] = self.indices[set_name]
