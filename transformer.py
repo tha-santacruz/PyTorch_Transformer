@@ -135,19 +135,18 @@ class EmbeddingLayer(nn.Module):
         super(EmbeddingLayer, self).__init__()
         #PE(pos, 2i) = sin(pos/10000**(2i/d_model))
         #PE(pos, 2i+1) = cos(pos/10000**(2i/d_model))
-        self.token_embeddings = nn.Parameter(torch.randn(num_tokens, d_model), requires_grad=True).mul(d_model**0.5)
+        self.token_embeddings = nn.Parameter(torch.randn(num_tokens, d_model).mul(d_model**0.5), requires_grad=True)
         self.sine = lambda pos, j : torch.sin(pos.div(torch.tensor(10000).pow(j/d_model)))
         self.cosine = lambda pos, j : torch.cos(pos.div(torch.tensor(10000).pow(j/d_model)))
         self.dropout = nn.Dropout(p=0.1)
 
     def forward(self, x):
         y1 = self.token_embeddings[x]
-        y2 = torch.zeros_like(y1)
+        y2 = torch.zeros_like(y1).to(dtype=y1.dtype)
         pos = torch.arange(y1.size(1))
         for i in range(int(y1.size(2)/2)):
             y2[:, :, 2*i] = self.sine(pos, 2*i)
             y2[:, :, 2*i+1] = self.cosine(pos, 2*i)
-
         y3 = self.dropout(y1.add(y2))
         return y3
     
@@ -167,17 +166,16 @@ class TransformerModel(nn.Module):
     
     def forward(self, input_ids, input_mask):
         input_seq = self.embedding_layer(input_ids)
-        output_ids = torch.zeros_like(input_ids)
-        output_seq = torch.zeros_like(input_seq)
-        output_mask = torch.zeros_like(input_mask)
-        output_probs = torch.zeros((input_seq.size(0), input_seq.size(1), self.linear.out_features))
+        output_ids = torch.zeros_like(input_ids).int()
+        output_seq = torch.zeros_like(input_seq).to(dtype=input_seq.dtype)
+        output_mask = torch.zeros_like(input_mask).to(dtype=input_seq.dtype)
+        output_probs = torch.zeros((input_seq.size(0), input_seq.size(1), self.linear.out_features)).to(dtype=input_seq.dtype)
         encoder_hidden_states = []
         for encoder_layer in self.encoder_layers:
             input_seq = encoder_layer(input_seq, input_mask)
             encoder_hidden_states.append(input_seq)
 
-        from tqdm import trange        
-        for i in trange(output_ids.size(1)):
+        for i in range(output_ids.size(1)):
             for j, decoder_layer in enumerate(self.decoder_layers):
                 output_seq = decoder_layer(
                     output_seq,
@@ -191,7 +189,7 @@ class TransformerModel(nn.Module):
             output_seq = self.embedding_layer(output_ids)
             output_mask[:, i] = 1
 
-        return output_ids, output_probs
+        return output_probs, output_ids
 
     
 if __name__ == "__main__":
@@ -211,7 +209,7 @@ if __name__ == "__main__":
         num_tokens=dataset.vocab_size)
     
     #with torch.no_grad():
-    #    ids, probs = net(batch[0], batch[1])
+    #    probs, ids = net(batch[0], batch[1])
 
     #print(dataset.tokenizer.decode(ids[0].tolist()))
     
@@ -220,3 +218,9 @@ if __name__ == "__main__":
         if param.requires_grad:
             parameters_count += param.numel()
     print(f"number of parameters in the model : {parameters_count}")
+
+
+    layer = EmbeddingLayer(512, 30000)
+    for name, param in layer.named_parameters():
+        print(name)
+        print(param.data.dtype)
