@@ -208,8 +208,8 @@ if __name__ == "__main__":
         l=6, 
         num_tokens=dataset.vocab_size)
     
-    #with torch.no_grad():
-    #    probs, ids = net(batch[0], batch[1])
+    with torch.no_grad():
+        probs, ids = net(batch[0], batch[1])
 
     #print(dataset.tokenizer.decode(ids[0].tolist()))
     
