@@ -22,6 +22,8 @@ class Experiment():
             l=6,
             num_tokens=self.dataset.vocab_size,
         )
+        if self.cfg.LOAD_CHECKPOINT:
+            self.net.load_state_dict(torch.load(f"checkpoints/bestmodel_{self.cfg.DATASET}.pt"))
         
         self.default_dtype = torch.float16 if self.cfg.PARAM_BITS == 16 else torch.float32
 
@@ -112,9 +114,17 @@ class Experiment():
 
     def train(self):
         
+        best_val_loss = 1e9
+
         for epoch in range(self.cfg.EPOCH_NUM):
             train_loss, train_acc = self.train_round()
             val_loss, val_acc = self.eval_round()
+
+            if val_loss < best_val_loss:
+                torch.save(self.net.state_dict(), f"checkpoints/bestmodel_{self.cfg.DATASET}.pt")
+                best_val_loss = val_loss
+
+            print(f"Metrics after epoch {epoch+1} : train loss : {train_loss:.4f} | train accuracy : {train_acc:.4f} | validation loss : {val_loss:.4f} | validation accuracy {val_acc:.4f}")
             
         ## NEED GRAD SCALER, SMOOTHING, DTYPE setting for model and data
 
