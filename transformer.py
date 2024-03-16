@@ -166,10 +166,10 @@ class TransformerModel(nn.Module):
     
     def forward(self, input_ids, input_mask):
         input_seq = self.embedding_layer(input_ids)
-        output_ids = torch.zeros_like(input_ids).int()
-        output_seq = torch.zeros_like(input_seq).to(dtype=input_seq.dtype)
-        output_mask = torch.zeros_like(input_mask).to(dtype=input_seq.dtype)
-        output_probs = torch.zeros((input_seq.size(0), input_seq.size(1), self.linear.out_features)).to(dtype=input_seq.dtype)
+        output_ids = torch.zeros_like(input_ids).int().to(device=input_ids.device)
+        output_seq = torch.zeros_like(input_seq).to(dtype=input_seq.dtype, device=input_ids.device)
+        output_mask = torch.zeros_like(input_mask).to(dtype=input_seq.dtype, device=input_ids.device)
+        output_probs = torch.zeros((input_seq.size(0), input_seq.size(1), self.linear.out_features)).to(dtype=input_seq.dtype, device=input_ids.device)
         encoder_hidden_states = []
         for encoder_layer in self.encoder_layers:
             input_seq = encoder_layer(input_seq, input_mask)
@@ -193,34 +193,44 @@ class TransformerModel(nn.Module):
 
     
 if __name__ == "__main__":
+    
+    # Device
+    device = "cuda" if torch.cuda.is_available() else "cpu"
 
+    # Cudnn setup
+    if torch.cuda.is_available():
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
+
+    # Batch
     dataset = OpusTranslationDataset(
         dataset_name="WikiMatrix",
         language_source="fr",
         language_target="it"
     )
     dataset.use_set("train")
-    dataloader = DataLoader(dataset, batch_size=4)
+    dataloader = DataLoader(dataset, batch_size=1)
     batch = next(iter(dataloader))
-    net = TransformerModel(
-        d_model=512, 
-        h=8, 
-        l=6, 
-        num_tokens=dataset.vocab_size)
-    
-    with torch.no_grad():
-        probs, ids = net(batch[0], batch[1])
 
-    #print(dataset.tokenizer.decode(ids[0].tolist()))
+    # Net
+    net = TransformerModel(
+        d_model=256, 
+        h=4, 
+        l=3, 
+        num_tokens=dataset.vocab_size).to(device=device)
+    
+    # Float Precision
+    for param in net.parameters():
+            param.data = param.data.to(dtype=torch.float16)
+            if param.grad is not None:
+                param.grad.data = param.grad.data.to(dtype=torch.float16)
+    
+    #with torch.no_grad():
+    probs, ids = net(batch[0].to(device=device), batch[1].to(device=device))
+    print(dataset.tokenizer.decode(ids[0].tolist()))
     
     parameters_count = 0
     for name, param in net.named_parameters():
         if param.requires_grad:
             parameters_count += param.numel()
     print(f"number of parameters in the model : {parameters_count}")
-
-
-    layer = EmbeddingLayer(512, 30000)
-    for name, param in layer.named_parameters():
-        print(name)
-        print(param.data.dtype)
