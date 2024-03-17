@@ -147,7 +147,7 @@ class EmbeddingLayer(nn.Module):
         for i in range(int(y1.size(2)/2)):
             y2[:, :, 2*i] = self.sine(pos, 2*i)
             y2[:, :, 2*i+1] = self.cosine(pos, 2*i)
-        y3 = self.dropout(y1.add(y2))
+        y3 = self.dropout(y1 + y2)
         return y3
     
 
@@ -198,6 +198,7 @@ if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # Cudnn setup
+    torch.autograd.set_detect_anomaly(True)
     if torch.cuda.is_available():
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
@@ -206,7 +207,9 @@ if __name__ == "__main__":
     dataset = OpusTranslationDataset(
         dataset_name="WikiMatrix",
         language_source="fr",
-        language_target="it"
+        language_target="it",
+        vocab_size=30000,
+        sequence_length=128
     )
     dataset.use_set("train")
     dataloader = DataLoader(dataset, batch_size=1)
@@ -214,9 +217,9 @@ if __name__ == "__main__":
 
     # Net
     net = TransformerModel(
-        d_model=256, 
-        h=4, 
-        l=3, 
+        d_model=512, 
+        h=8, 
+        l=6, 
         num_tokens=dataset.vocab_size).to(device=device)
     
     # Float Precision
@@ -227,7 +230,10 @@ if __name__ == "__main__":
     
     #with torch.no_grad():
     probs, ids = net(batch[0].to(device=device), batch[1].to(device=device))
-    print(dataset.tokenizer.decode(ids[0].tolist()))
+
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.1).to(device=device)
+    loss = criterion(probs.flatten(), torch.randn_like(probs.flatten()).to(device=device))
+    loss.backward()
     
     parameters_count = 0
     for name, param in net.named_parameters():
