@@ -3,8 +3,6 @@ import os
 import torch
 import argparse
 
-torch.backends.cudnn.benchmark = True
-
 
 DIR_PATH = os.path.dirname(os.path.realpath(__file__))
 
@@ -16,7 +14,7 @@ def parse_args():
 
     parser.add_argument("--BATCH_SIZE", dest="BATCH_SIZE",
                       help="{choose a batch size, prefferably a power of 2}",
-                      default = 2,
+                      default = 1,
                       type=int)
 
     parser.add_argument("--DATASET", dest="DATASET",
@@ -67,7 +65,7 @@ def parse_args():
     parser.add_argument("--PARAM_BITS", dest="PARAM_BITS",
                       help="{Number of bits for the model parameters}",
                       choices=[16, 32],
-                      default = 16,
+                      default = 32,
                       type=int)
 
     parser.add_argument("--RANDOM_SEED", dest="RANDOM_SEED",
@@ -86,6 +84,11 @@ def parse_args():
                       help="{yes, no}",
                       default = "no",
                       type=str)
+    
+    parser.add_argument("--SEQUENCE_LENGTH", dest="SEQUENCE_LENGTH",
+                      help="Maximal sequence length to be processed",
+                      default = 128,
+                      type=int)
 
     args = parser.parse_args()
     return args
@@ -97,6 +100,12 @@ if __name__ == "__main__":
 
     # Use CPU if no GPU is available
     cfg.DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+    # Cudnn setup
+    torch.autograd.set_detect_anomaly(True)
+    if torch.cuda.is_available():
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
 
     # Run
     if cfg.RUN_MODE == "train":

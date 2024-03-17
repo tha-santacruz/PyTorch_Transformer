@@ -15,22 +15,23 @@ class Experiment():
             dataset_name=self.cfg.DATASET,
             language_source=self.cfg.LANGUAGE_INPUT,
             language_target=self.cfg.LANGUAGE_TARGET,
+            sequence_length=self.cfg.SEQUENCE_LENGTH
         )
         self.net = TransformerModel(
-            d_model=512,
-            h=8,
-            l=6,
+            d_model=512, 
+            h=8, 
+            l=6, 
             num_tokens=self.dataset.vocab_size,
-        )
+        ).to(device=self.cfg.DEVICE)
         if self.cfg.LOAD_CHECKPOINT:
             self.net.load_state_dict(torch.load(f"checkpoints/bestmodel_{self.cfg.DATASET}.pt"))
         
         self.default_dtype = torch.float16 if self.cfg.PARAM_BITS == 16 else torch.float32
 
         for param in self.net.parameters():
-            param.data = param.data.to(dtype=self.default_dtype)
+            param.data = param.data.to(dtype=self.default_dtype).clone().detach()
             if param.grad is not None:
-                param.grad.data = param.grad.data.to(dtype=self.default_dtype)
+                param.grad.data = param.grad.data.to(dtype=self.default_dtype).clone().detach()
 
 
         self.optimizer = torch.optim.Adam(
@@ -39,7 +40,7 @@ class Experiment():
             betas=(0.9, 0.98),
             eps=1e-9,
         )
-        self.criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
+        self.criterion = nn.CrossEntropyLoss(label_smoothing=0.1).to(device=self.cfg.DEVICE)
         self.scaler = amp.GradScaler()
 
     def train_round(self):
@@ -63,12 +64,14 @@ class Experiment():
             target_mask = batch[3].to(dtype=self.default_dtype, device=self.cfg.DEVICE)
             with amp.autocast():
                 pred_probs, pred_ids = self.net(input_ids, input_mask)
-                loss = self.criterion(pred_probs.view(-1, pred_probs.size(-1)), target_ids.view(-1))
+            
+            loss = self.criterion(pred_probs.view(-1, pred_probs.size(-1)), target_ids.view(-1))
 
             self.optimizer.zero_grad()
             self.scaler.scale(loss).backward()
             self.scaler.step(self.optimizer)
-            self.scaler.update
+            self.scaler.update()
+            
             with torch.no_grad():
                 success = (pred_ids==target_ids)[target_mask==1]
                 acc = success.sum()/success.size(-1)
@@ -99,9 +102,8 @@ class Experiment():
             target_ids = batch[2].to(dtype=self.default_dtype, device=self.cfg.DEVICE)
             target_mask = batch[3].to(dtype=self.default_dtype, device=self.cfg.DEVICE)
             with torch.no_grad():
-                with amp.autocast():
-                    pred_probs, pred_ids = self.net(input_ids, input_mask)
-                    loss = self.criterion(pred_probs, target_ids)
+                pred_probs, pred_ids = self.net(input_ids, input_mask)
+                loss = self.criterion(pred_probs, target_ids)
                     
                 success = (pred_ids==target_ids)[target_mask==1]
                 acc = success.sum()/success.size(-1)
