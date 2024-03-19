@@ -69,7 +69,7 @@ class MaskedAttentionHead(nn.Module):
         k = self.linear_keys(k)
         v = self.linear_values(v)
         a = torch.matmul(q, k.transpose(-1, -2)).div(q.size(-1)**(0.5))
-        a = a * m.unsqueeze(-1)
+        a = torch.mul(a, torch.unsqueeze(m, -1))
         a = self.activation(a)
         y = torch.matmul(a, v)
         return y
@@ -166,10 +166,17 @@ class TransformerModel(nn.Module):
     
     def forward(self, input_ids, input_mask):
         input_seq = self.embedding_layer(input_ids)
+
         output_ids = torch.zeros_like(input_ids).int().to(device=input_ids.device)
         output_seq = torch.zeros_like(input_seq).to(dtype=input_seq.dtype, device=input_ids.device)
         output_mask = torch.zeros_like(input_mask).to(dtype=input_seq.dtype, device=input_ids.device)
         output_probs = torch.zeros((input_seq.size(0), input_seq.size(1), self.linear.out_features)).to(dtype=input_seq.dtype, device=input_ids.device)
+
+        input_mask.requires_grad_(False)
+        output_mask.requires_grad_(False)
+        output_ids.requires_grad_(False)
+        output_seq.requires_grad_(False)
+
         encoder_hidden_states = []
         for encoder_layer in self.encoder_layers:
             input_seq = encoder_layer(input_seq, input_mask)
@@ -184,10 +191,15 @@ class TransformerModel(nn.Module):
                 )
             logits = self.linear(output_seq)
             probs = self.activation(logits)
-            output_probs[:, i, :] = probs[:, i, :]
-            output_ids[:, i] = probs[:, i, :].argmax(dim=-1)
+
+            update_mask = F.one_hot(torch.tensor([i]).repeat(input_seq.size(0)), num_classes=input_seq.size(1))
+            output_probs = output_probs + torch.mul(update_mask.unsqueeze(dim=-1), probs)
+            output_ids = output_ids + torch.mul(update_mask, probs.argmax(dim=-1))
             output_seq = self.embedding_layer(output_ids)
-            output_mask[:, i] = 1
+            output_mask = output_mask + update_mask
+
+        if i == 0:
+            return output_probs, output_ids
 
         return output_probs, output_ids
 
@@ -218,15 +230,15 @@ if __name__ == "__main__":
     # Net
     net = TransformerModel(
         d_model=512, 
-        h=8, 
+        h=8,
         l=6, 
         num_tokens=dataset.vocab_size).to(device=device)
     
     # Float Precision
     for param in net.parameters():
-            param.data = param.data.to(dtype=torch.float16)
+            param.data = param.data.to(dtype=torch.float32)
             if param.grad is not None:
-                param.grad.data = param.grad.data.to(dtype=torch.float16)
+                param.grad.data = param.grad.data.to(dtype=torch.float32)
     
     #with torch.no_grad():
     probs, ids = net(batch[0].to(device=device), batch[1].to(device=device))
