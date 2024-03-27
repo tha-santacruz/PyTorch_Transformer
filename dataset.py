@@ -22,7 +22,7 @@ class OpusTranslationDataset():
         self.vocab_size = vocab_size
         self.sequence_length = sequence_length
         self.tokenizer = get_tokenizer(
-            tokenizer_path=f"tokenizers/{self.dataset_name}",
+            tokenizer_path=f"tokenizers/{self.dataset_name}_{self.vocab_size}",
             reference_corpora=[f"data/{self.dataset_name}/{self.text_file_source}", f"data/{self.dataset_name}/{self.text_file_target}"],
             vocab_size=self.vocab_size,
             sequence_length=self.sequence_length
