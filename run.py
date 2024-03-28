@@ -13,63 +13,77 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Hyperparameters and config parser")
 
     parser.add_argument("--BATCH_SIZE", dest="BATCH_SIZE",
-                      help="{choose a batch size, prefferably a power of 2}",
+                      help="Size of the data batches to process",
                       default = 1,
                       type=int)
 
-    parser.add_argument("--DATASET", dest="DATASET",
-                      help="{Path to the train and evaluate the model}",
+    parser.add_argument("--DATASET_NAME", dest="DATASET_NAME",
+                      help="Path to the train and evaluate the model",
                       default = f"WikiMatrix",
                       type=str)
 
     parser.add_argument("--DEVICE", dest="DEVICE",
                       choices=["cuda:0"],
-                      help="{cuda device to use}",
+                      help="Cuda device to use (defaults to cpu when no cuda device is available)",
                       default = "cuda:0",
                       type=str)
 
     parser.add_argument("--EPOCH_NUM", dest="EPOCH_NUM",
-                      help="{choose a number of epochs, -1 for infinite}",
+                      help="Number of training epochs, -1 for infinite",
                       default = 100,
                       type=int)
     
+    parser.add_argument("--HALF_BITS", dest="HALF_BITS",
+                      help="If enables, uses 16 bits model weights instead of 32 bits",
+                      action="store_true")
+    
     parser.add_argument("--LANGUAGE_INPUT", dest="LANGUAGE_INPUT",
-                      help="{language of the input data}",
+                      help="Language of the input data",
                       default = f"fr",
                       type=str)
     
     parser.add_argument("--LANGUAGE_TARGET", dest="LANGUAGE_TARGET",
-                      help="{language of the target data}",
+                      help="Language of the target data",
                       default = f"it",
                       type=str)
     
     parser.add_argument("--LEARNING_RATE", dest="LEARNING_RATE",
-                      help="{choose a learning rate}",
+                      help="Learning rate for model parameters update",
                       default = 1e-5,
                       type=float)
     
     parser.add_argument("--LOAD_CHECKPOINT", dest="LOAD_CHECKPOINT",
-                      help="{.pth checkpoint file name ex : checkpoint.pth}",
-                      default = None)
+                      help="If set, loads .pt checkpoint file. ex : checkpoint",
+                      nargs="?",
+                      default=False,)
     
     parser.add_argument("--MIN_LEARNING_RATE", dest="MIN_LEARNING_RATE",
-                      help="{choose a minimal learning rate}",
+                      help="choose a minimal learning rate",
                       default = 1e-6,
                       type=float)
     
-    parser.add_argument("--NUM_WORKERS", dest="NUM_WORKERS",
-                      help="{Number of workers on CPU for data loading}",
-                      default = 1,
+    parser.add_argument("--MODEL_DIMS", dest="MODEL_DIMS",
+                      help="Number of the dimensions for signal repesentation",
+                      default=512,
                       type=int)
     
-    parser.add_argument("--PARAM_BITS", dest="PARAM_BITS",
-                      help="{Number of bits for the model parameters}",
-                      choices=[16, 32],
-                      default = 32,
+    parser.add_argument("--MODEL_HEADS", dest="MODEL_HEADS",
+                      help="Number of attention heads per model layer",
+                      default=6,
+                      type=int)
+    
+    parser.add_argument("--MODEL_LAYERS", dest="MODEL_LAYERS",
+                      help="Number of layers in the model",
+                      default=8,
+                      type=int)
+    
+    parser.add_argument("--NUM_WORKERS", dest="NUM_WORKERS",
+                      help="Number of workers on CPU for data loading",
+                      default = 1,
                       type=int)
 
     parser.add_argument("--RANDOM_SEED", dest="RANDOM_SEED",
-                      help="{Random seed for experiments reproducibility}",
+                      help="Random seed for experiments reproducibility",
                       default = 42,
                       type=int)
     
@@ -80,14 +94,18 @@ def parse_args():
                       type=str)
     
     parser.add_argument("--SAVE_CHECKPOINTS", dest="SAVE_CHECKPOINTS",
-                      choices=["yes", "no"],
-                      help="{yes, no}",
-                      default = "no",
-                      type=str)
+                      help="If set, saves checkpoints in a .pt file with the provided name. ex : bestmodel",
+                      nargs="?",
+                      default=False,)
     
     parser.add_argument("--SEQUENCE_LENGTH", dest="SEQUENCE_LENGTH",
                       help="Maximal sequence length to be processed",
                       default = 128,
+                      type=int)
+    
+    parser.add_argument("--VOCAB_SIZE", dest="VOCAB_SIZE",
+                      help="Number of tokens in the tokenizer vocabulary",
+                      default = 30000,
                       type=int)
 
     args = parser.parse_args()
