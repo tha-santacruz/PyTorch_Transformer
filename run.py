@@ -69,12 +69,12 @@ def parse_args():
     
     parser.add_argument("--MODEL_HEADS", dest="MODEL_HEADS",
                       help="Number of attention heads per model layer",
-                      default=6,
+                      default=8,
                       type=int)
     
     parser.add_argument("--MODEL_LAYERS", dest="MODEL_LAYERS",
                       help="Number of layers in the model",
-                      default=8,
+                      default=6,
                       type=int)
     
     parser.add_argument("--NUM_WORKERS", dest="NUM_WORKERS",
@@ -100,7 +100,7 @@ def parse_args():
     
     parser.add_argument("--SEQUENCE_LENGTH", dest="SEQUENCE_LENGTH",
                       help="Maximal sequence length to be processed",
-                      default = 128,
+                      default = 64,
                       type=int)
     
     parser.add_argument("--VOCAB_SIZE", dest="VOCAB_SIZE",
@@ -120,7 +120,7 @@ if __name__ == "__main__":
     cfg.DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
     # Cudnn setup
-    torch.autograd.set_detect_anomaly(True)
+    #torch.autograd.set_detect_anomaly(True)
     if torch.cuda.is_available():
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
