@@ -192,7 +192,7 @@ class TransformerModel(nn.Module):
             logits = self.linear(output_seq)
             probs = self.activation(logits)
 
-            update_mask = F.one_hot(torch.tensor([i]).repeat(input_seq.size(0)), num_classes=input_seq.size(1))
+            update_mask = F.one_hot(torch.tensor([i]).repeat(input_seq.size(0)), num_classes=input_seq.size(1)).to(device=probs.device)
             output_probs = output_probs + torch.mul(update_mask.unsqueeze(dim=-1), probs)
             output_ids = output_ids + torch.mul(update_mask, probs.argmax(dim=-1))
             output_seq = self.embedding_layer(output_ids)
@@ -210,7 +210,7 @@ if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # Cudnn setup
-    torch.autograd.set_detect_anomaly(True)
+    #torch.autograd.set_detect_anomaly(True)
     if torch.cuda.is_available():
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
@@ -240,15 +240,20 @@ if __name__ == "__main__":
             if param.grad is not None:
                 param.grad.data = param.grad.data.to(dtype=torch.float32)
     
-    #with torch.no_grad():
-    probs, ids = net(batch[0].to(device=device), batch[1].to(device=device))
 
-    criterion = nn.CrossEntropyLoss(label_smoothing=0.1).to(device=device)
-    loss = criterion(probs.flatten(), torch.randn_like(probs.flatten()).to(device=device))
-    loss.backward()
-    
     parameters_count = 0
     for name, param in net.named_parameters():
         if param.requires_grad:
             parameters_count += param.numel()
     print(f"number of parameters in the model : {parameters_count}")
+
+    #with torch.no_grad():
+    print(batch[1].sum())
+    print(dataset.tokenizer.decode(batch[0][0].tolist()))
+    print(batch[0][0])
+
+    probs, ids = net(batch[0].to(device=device), batch[1].to(device=device))
+
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.1).to(device=device)
+    loss = criterion(probs.flatten(), torch.randn_like(probs.flatten()).to(device=device))
+    loss.backward()
