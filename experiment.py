@@ -1,9 +1,9 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as f
-import torch.cuda.amp as amp
 from tqdm import tqdm
 from torch.utils.data import DataLoader
+from torch.utils.checkpoint import checkpoint
 
 from dataset import OpusTranslationDataset
 from transformer import TransformerModel
@@ -11,6 +11,7 @@ from transformer import TransformerModel
 class Experiment():
     def __init__(self, cfg):
         self.cfg = cfg
+
         self.dataset = OpusTranslationDataset(
             dataset_name=self.cfg.DATASET_NAME,
             language_source=self.cfg.LANGUAGE_INPUT,
@@ -18,12 +19,14 @@ class Experiment():
             sequence_length=self.cfg.SEQUENCE_LENGTH,
             vocab_size=self.cfg.VOCAB_SIZE
         )
+
         self.net = TransformerModel(
             d_model=self.cfg.MODEL_DIMS, 
             h=self.cfg.MODEL_HEADS, 
             l=self.cfg.MODEL_LAYERS, 
             num_tokens=self.cfg.VOCAB_SIZE,
         ).to(device=self.cfg.DEVICE)
+
         if self.cfg.LOAD_CHECKPOINT:
             self.net.load_state_dict(torch.load(f"checkpoints/{self.cfg.LOAD_CHECKPOINT}.pt"))
         
@@ -42,7 +45,7 @@ class Experiment():
             eps=1e-9,
         )
         self.criterion = nn.CrossEntropyLoss(label_smoothing=0.1).to(device=self.cfg.DEVICE)
-        self.scaler = amp.GradScaler()
+        self.scaler = torch.cuda.amp.GradScaler()
 
     def train_round(self):
         self.dataset.use_set("train")
@@ -66,14 +69,13 @@ class Experiment():
             input_ids = batch[0].to(dtype=torch.int64, device=self.cfg.DEVICE)
             input_mask = batch[1].to(dtype=self.default_dtype, device=self.cfg.DEVICE)
             target_ids = batch[2].to(dtype=torch.int64, device=self.cfg.DEVICE)
-            target_mask = batch[3].to(dtype=self.default_dtype, device=self.cfg.DEVICE)
-            with amp.autocast():
+            target_mask = batch[3].to(dtype=self.default_dtype)
+
+            with torch.cuda.amp.autocast():
                 pred_probs, pred_ids = self.net(input_ids, input_mask)
             
             loss = self.criterion(pred_probs.view(-1, pred_probs.size(-1)), target_ids.view(-1))
-
             self.scaler.scale(loss).backward()
-
             nn.utils.clip_grad_norm(self.net.parameters(), 1.0)
 
             self.scaler.step(self.optimizer)
@@ -135,8 +137,7 @@ class Experiment():
                 best_val_loss = val_loss
 
             print(f"Metrics after epoch {epoch+1} : train loss : {train_loss:.4f} | train accuracy : {train_acc:.4f} | validation loss : {val_loss:.4f} | validation accuracy {val_acc:.4f}")
-            
-        ## NEED GRAD SCALER, SMOOTHING, DTYPE setting for model and data
+        
 
         
     
