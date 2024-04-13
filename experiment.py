@@ -17,7 +17,9 @@ class Experiment():
             language_source=self.cfg.LANGUAGE_INPUT,
             language_target=self.cfg.LANGUAGE_TARGET,
             sequence_length=self.cfg.SEQUENCE_LENGTH,
-            vocab_size=self.cfg.VOCAB_SIZE
+            vocab_size=self.cfg.VOCAB_SIZE,
+            test_examples=self.cfg.TEST_EXAMPLES,
+            val_examples=self.cfg.VAL_EXAMPLES
         )
 
         self.net = TransformerModel(

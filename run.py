@@ -100,7 +100,17 @@ def parse_args():
     
     parser.add_argument("--SEQUENCE_LENGTH", dest="SEQUENCE_LENGTH",
                       help="Maximal sequence length to be processed",
-                      default = 64,
+                      default = 128,
+                      type=int)
+    
+    parser.add_argument("--TEST_EXAMPLES", dest="TEST_EXAMPLES",
+                      help="Number of test examples",
+                      default = 10000,
+                      type=int)
+    
+    parser.add_argument("--VAL_EXAMPLES", dest="VAL_EXAMPLES",
+                      help="Number of validation examples",
+                      default = 10000,
                       type=int)
     
     parser.add_argument("--VOCAB_SIZE", dest="VOCAB_SIZE",
@@ -120,10 +130,12 @@ if __name__ == "__main__":
     cfg.DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
     # Cudnn setup
-    #torch.autograd.set_detect_anomaly(True)
+    torch.autograd.set_detect_anomaly(True)
     if torch.cuda.is_available():
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
+    
+    print(cfg)
 
     # Run
     if cfg.RUN_MODE == "train":
