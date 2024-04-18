@@ -130,7 +130,7 @@ if __name__ == "__main__":
     cfg.DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
     # Cudnn setup
-    torch.autograd.set_detect_anomaly(True)
+    #torch.autograd.set_detect_anomaly(True)
     if torch.cuda.is_available():
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
