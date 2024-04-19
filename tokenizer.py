@@ -1,34 +1,57 @@
 import os
 
-from tokenizers import ByteLevelBPETokenizer
+from tokenizers import Tokenizer
+from tokenizers.models import BPE
+from tokenizers.trainers import BpeTrainer
+from tokenizers.pre_tokenizers import ByteLevel as ByteLevelPreTokenizer
+from tokenizers.decoders import ByteLevel as ByteLevelDecoder
+from tokenizers.processors import TemplateProcessing
+from tokenizers.normalizers import NFKC
 
 def get_tokenizer(tokenizer_path, reference_corpora, vocab_size=30000, sequence_length=256):
+    unk_token = "[UNK]"
     pad_token = "[PAD]"
-    special_tokens = ["[PAD]", "[CLS]", "[SEP]", "[MASK]", "[UNK]", "[EOT]"]
+    bos_token = "[BOS]"
+    eos_token = "[EOS]"
+
     if not isinstance(reference_corpora, list):
         reference_corpora = [reference_corpora]
-    tokenizer = ByteLevelBPETokenizer()
+
+    tokenizer = Tokenizer(BPE(unk_token=unk_token))
+
     if os.path.exists(tokenizer_path):
-        tokenizer = tokenizer.from_file(f"{tokenizer_path}/vocab.json", f"{tokenizer_path}/merges.txt")
+        tokenizer = tokenizer.from_file(f"{tokenizer_path}")
+
     else:
-        os.makedirs(tokenizer_path)
-        tokenizer.train(
-        files=reference_corpora, 
-        vocab_size=vocab_size, 
-        show_progress=True, 
-        special_tokens=special_tokens
+        trainer = BpeTrainer(
+            special_tokens = [unk_token, pad_token, bos_token, eos_token],
+            vocab_size=vocab_size,
+            min_frequency=2
         )
-        tokenizer.save_model(tokenizer_path)
+        tokenizer.train(reference_corpora, trainer)
+
+        tokenizer.save(tokenizer_path)
+
+    tokenizer.pre_tokenizer = ByteLevelPreTokenizer()
+    tokenizer.decoder = ByteLevelDecoder()   
     tokenizer.enable_padding(
         length=sequence_length, 
         pad_id=tokenizer.token_to_id(pad_token), 
         pad_token=pad_token
         )
     tokenizer.enable_truncation(max_length=sequence_length)
+    tokenizer.post_processor = TemplateProcessing(
+        single=f"{bos_token} $A {eos_token}",
+        special_tokens=[
+            (bos_token, tokenizer.token_to_id(bos_token)),
+            (eos_token, tokenizer.token_to_id(eos_token)),
+        ]
+    )
+    tokenizer.normalizer = NFKC()
 
     return tokenizer
   
 if __name__ == "__main__":
-    tokenizer = get_tokenizer("trial_tokenizer", "trials/lorem.txt")
-    output = tokenizer.encode("This is an example sentence that is rather short")
+    tokenizer = get_tokenizer("trials/trial_tokenizer", "trials/lorem.txt", 30000, 36)
+    output = tokenizer.encode("This is an example sentence that is rather short 😀")
     print(output.tokens)
