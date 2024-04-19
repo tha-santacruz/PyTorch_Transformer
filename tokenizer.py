@@ -30,23 +30,23 @@ def get_tokenizer(tokenizer_path, reference_corpora, vocab_size=30000, sequence_
         )
         tokenizer.pre_tokenizer = ByteLevelPreTokenizer()
         tokenizer.train(reference_corpora, trainer)
-        tokenizer.decoder = ByteLevelDecoder()   
-        tokenizer.enable_padding(
-            length=sequence_length, 
-            pad_id=tokenizer.token_to_id(pad_token), 
-            pad_token=pad_token
-            )
-        tokenizer.enable_truncation(max_length=sequence_length)
-        tokenizer.post_processor = TemplateProcessing(
-            single=f"{bos_token} $A {eos_token}",
-            special_tokens=[
-                (bos_token, tokenizer.token_to_id(bos_token)),
-                (eos_token, tokenizer.token_to_id(eos_token)),
-            ]
-        )
-        tokenizer.normalizer = NFKC()
-
         tokenizer.save(tokenizer_path)
+    
+    tokenizer.decoder = ByteLevelDecoder()   
+    tokenizer.enable_padding(
+        length=sequence_length, 
+        pad_id=tokenizer.token_to_id(pad_token), 
+        pad_token=pad_token
+        )
+    tokenizer.enable_truncation(max_length=sequence_length)
+    tokenizer.post_processor = TemplateProcessing(
+        single=f"{bos_token} $A {eos_token}",
+        special_tokens=[
+            (bos_token, tokenizer.token_to_id(bos_token)),
+            (eos_token, tokenizer.token_to_id(eos_token)),
+        ]
+    )
+    tokenizer.normalizer = NFKC()
 
     return tokenizer
   
