@@ -51,7 +51,7 @@ class MultiHeadAttention(nn.Module):
 
     def forward(self, v, k, q):
         y = [head(q, k, v) for head in self.attention_heads]
-        y = torch.concat(y, axis=-1)
+        y = torch.cat(y, axis=-1)
         y = self.linear(y)
         return y
     
@@ -85,7 +85,7 @@ class MaskedMultiHeadAttention(nn.Module):
 
     def forward(self, v, k, q, m):
         y = [head(q, k, v, m) for head in self.attention_heads]
-        y = torch.concat(y, axis=-1)
+        y = torch.cat(y, axis=-1)
         y = self.linear(y)
         return y
     
@@ -100,7 +100,7 @@ class EncoderLayer(nn.Module):
 
     def forward(self, x, m):
         y0 = self.masked_multi_head_attention(x, x, x, m)
-        y1 = self.dropout(y0) + x
+        y1 = self.dropout(y0) + x #.mul(m.unsqueeze(dim=-1).unsqueeze(dim=-1))
         y2 = self.layer_norm(y1)
         y3 = self.feed_forward(y2)
         y4 = self.dropout(y3) + y2
@@ -119,7 +119,7 @@ class DecoderLayer(nn.Module):
 
     def forward(self, x0, x1, m):
         y0 = self.masked_multi_head_attention(x0, x0, x0, m)
-        y1 = self.dropout(y0) + x0
+        y1 = self.dropout(y0) + x0 #.mul(m.unsqueeze(dim=-1).unsqueeze(dim=-1))
         y2 = self.layer_norm(y1)
         y3 = self.multi_head_attention(y2, x1, x1)
         y4 = self.dropout(y3) + y2
@@ -147,6 +147,7 @@ class EmbeddingLayer(nn.Module):
         for i in range(int(y1.size(2)/2)):
             y2[:, :, 2*i] = self.sine(pos, 2*i)
             y2[:, :, 2*i+1] = self.cosine(pos, 2*i)
+
         y3 = self.dropout(y1 + y2)
         return y3
     
@@ -163,45 +164,94 @@ class TransformerModel(nn.Module):
         self.embedding_layer = EmbeddingLayer(d_model, num_tokens)
         self.linear = nn.Linear(in_features=d_model, out_features=num_tokens)
         self.activation = nn.Softmax(dim=-1)
-    
-    def forward(self, input_ids, input_mask):
+
+    def forward_train(self, input_ids, input_mask, target_ids, target_mask):
+        """Teacher forcing for next token prediction"""
+        
         input_seq = self.embedding_layer(input_ids)
-
-        output_ids = torch.zeros_like(input_ids).int().to(device=input_ids.device)
-        output_seq = torch.zeros_like(input_seq).to(dtype=input_seq.dtype, device=input_ids.device)
-        output_mask = torch.zeros_like(input_mask).to(dtype=input_seq.dtype, device=input_ids.device)
-        output_probs = torch.zeros((input_seq.size(0), input_seq.size(1), self.linear.out_features)).to(dtype=input_seq.dtype, device=input_ids.device)
-
-        input_mask.requires_grad_(False)
-        output_mask.requires_grad_(False)
-        output_ids.requires_grad_(False)
-        output_seq.requires_grad_(False)
 
         encoder_hidden_states = []
         for encoder_layer in self.encoder_layers:
             input_seq = encoder_layer(input_seq, input_mask)
             encoder_hidden_states.append(input_seq)
 
-        for i in range(output_ids.size(1)):
+        output_mask = torch.zeros_like(input_mask).to(dtype=input_seq.dtype)
+        output_ids = input_ids.clone().detach()
+        output_probs = F.one_hot(output_ids, num_classes=self.linear.out_features).to(dtype=input_seq.dtype)
+        output_ids[:, 1:] = 0
+        output_probs[:, 1:, :] = 0
+        
+        for i in range(1, output_ids.size(1)):
+            
+            output_mask = torch.zeros_like(input_mask).to(dtype=input_seq.dtype)
+            output_mask[:, :i] = 1
+
+            output_seq = self.embedding_layer((target_ids*output_mask.to(dtype=target_ids.dtype)))
+
             for j, decoder_layer in enumerate(self.decoder_layers):
                 output_seq = decoder_layer(
                     output_seq,
                     encoder_hidden_states[j],
                     output_mask
                 )
-            logits = self.linear(output_seq)
-            probs = self.activation(logits)
 
-            update_mask = F.one_hot(torch.tensor([i]).repeat(input_seq.size(0)), num_classes=input_seq.size(1)).to(device=probs.device)
-            output_probs = output_probs + torch.mul(update_mask.unsqueeze(dim=-1), probs)
-            output_ids = output_ids + torch.mul(update_mask, probs.argmax(dim=-1))
-            output_seq = self.embedding_layer(output_ids)
-            output_mask = output_mask + update_mask
-
-        if i == 0:
-            return output_probs, output_ids
+            output_logits = self.linear(output_seq)
+            
+            update_mask = torch.zeros_like(input_ids)
+            update_mask[:, i] = 1
+            
+            output_probs = output_probs + torch.mul(update_mask.unsqueeze(dim=-1), self.activation(output_logits))
+            output_ids = output_ids + torch.mul(update_mask, output_probs.argmax(dim=-1))
 
         return output_probs, output_ids
+    
+    def forward_eval(self, input_ids, input_mask):
+        """Autoregressive output generation"""
+        
+        input_seq = self.embedding_layer(input_ids)
+
+        encoder_hidden_states = []
+        for encoder_layer in self.encoder_layers:
+            input_seq = encoder_layer(input_seq, input_mask)
+            encoder_hidden_states.append(input_seq)
+
+        output_mask = torch.zeros_like(input_mask).to(dtype=input_seq.dtype)
+        output_ids = input_ids.clone().detach()
+        output_probs = F.one_hot(output_ids, num_classes=self.linear.out_features).to(dtype=input_seq.dtype)
+        output_ids[:, 1:] = 0
+        output_probs[:, 1:, :] = 0
+        
+        for i in range(1, output_ids.size(1)):
+            
+            output_seq = self.embedding_layer(output_ids)
+            
+            output_mask = torch.zeros_like(input_mask).to(dtype=input_seq.dtype)
+            output_mask[:, :i] = 1
+
+            for j, decoder_layer in enumerate(self.decoder_layers):
+                output_seq = decoder_layer(
+                    output_seq,
+                    encoder_hidden_states[j],
+                    output_mask
+                )
+
+            output_logits = self.linear(output_seq)
+            
+            update_mask = torch.zeros_like(input_ids)
+            update_mask[:, i] = 1
+            
+            output_probs = output_probs + torch.mul(update_mask.unsqueeze(dim=-1), self.activation(output_logits))
+            output_ids = output_ids + torch.mul(update_mask, output_probs.argmax(dim=-1))
+            
+        return output_probs, output_ids
+    
+    def forward(self, input_ids, input_mask, target_ids=None, target_mask=None):
+        if self.training:
+            #return self.forward_eval(input_ids, input_mask)
+            return self.forward_train(input_ids, input_mask, target_ids, target_mask)
+        
+        else:
+            return self.forward_eval(input_ids, input_mask)
 
     
 if __name__ == "__main__":
@@ -224,7 +274,7 @@ if __name__ == "__main__":
         sequence_length=128
     )
     dataset.use_set("train")
-    dataloader = DataLoader(dataset, batch_size=1)
+    dataloader = DataLoader(dataset, batch_size=2)
     batch = next(iter(dataloader))
 
     # Net
@@ -247,12 +297,23 @@ if __name__ == "__main__":
             parameters_count += param.numel()
     print(f"number of parameters in the model : {parameters_count}")
 
-    #with torch.no_grad():
     print(batch[1].sum())
     print(dataset.tokenizer.decode(batch[0][0].tolist()))
     print(batch[0][0])
 
-    probs, ids = net(batch[0].to(device=device), batch[1].to(device=device))
+    input_ids = batch[0].to(dtype=torch.int64, device=device)
+    input_mask = batch[1].to(dtype=torch.float32, device=device)
+    target_ids = batch[2].to(dtype=torch.int64, device=device)
+    target_mask = batch[3].to(dtype=torch.float32, device=device)
+
+    net.train()
+
+    probs, ids = net(
+        input_ids, 
+        input_mask,
+        target_ids,
+        target_mask 
+        )
 
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1).to(device=device)
     loss = criterion(probs.flatten(), torch.randn_like(probs.flatten()).to(device=device))
