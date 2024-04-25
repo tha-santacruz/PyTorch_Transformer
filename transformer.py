@@ -22,15 +22,13 @@ class MLP(nn.Module):
 class AttentionHead(nn.Module):
     def __init__(self, d_model, h):
         super(AttentionHead, self).__init__()
-        self.linear_queries = nn.Linear(in_features=d_model, out_features=int(d_model/h))
-        self.linear_keys = nn.Linear(in_features=d_model, out_features=int(d_model/h))
-        self.linear_values = nn.Linear(in_features=d_model, out_features=int(d_model/h))
+        self.linear_queries = nn.Linear(in_features=d_model, out_features=int(d_model/h), bias=False)
+        self.linear_keys = nn.Linear(in_features=d_model, out_features=int(d_model/h), bias=False)
+        self.linear_values = nn.Linear(in_features=d_model, out_features=int(d_model/h), bias=False)
+        nn.init.xavier_normal_(self.linear_queries.weight)
+        nn.init.xavier_normal_(self.linear_keys.weight)
+        nn.init.xavier_normal_(self.linear_values.weight)
         self.activation = nn.Softmax(dim=-1)
-        # Q.size() = (T, D)
-        # K.size() = (T', D)
-        # V.size() = (T', D')
-        # A.size() = (T, T')
-        # Y.size() = (T, D')
 
     def forward(self, q, k, v):
         q = self.linear_queries(q)
@@ -48,6 +46,7 @@ class MultiHeadAttention(nn.Module):
             [AttentionHead(d_model, h) for i in range(h)]
         )
         self.linear = nn.Linear(in_features=d_model, out_features=d_model)
+        nn.init.xavier_normal_(self.linear.weight)
 
     def forward(self, v, k, q):
         y = [head(q, k, v) for head in self.attention_heads]
@@ -59,10 +58,17 @@ class MultiHeadAttention(nn.Module):
 class MaskedAttentionHead(nn.Module):
     def __init__(self, d_model, h):
         super(MaskedAttentionHead, self).__init__()
-        self.linear_queries = nn.Linear(in_features=d_model, out_features=int(d_model/h))
-        self.linear_keys = nn.Linear(in_features=d_model, out_features=int(d_model/h))
-        self.linear_values = nn.Linear(in_features=d_model, out_features=int(d_model/h))
+        self.linear_queries = nn.Linear(in_features=d_model, out_features=int(d_model/h), bias=False)
+        self.linear_keys = nn.Linear(in_features=d_model, out_features=int(d_model/h), bias=False)
+        self.linear_values = nn.Linear(in_features=d_model, out_features=int(d_model/h), bias=False)
+        nn.init.xavier_normal_(self.linear_queries.weight)
+        nn.init.xavier_normal_(self.linear_keys.weight)
+        nn.init.xavier_normal_(self.linear_values.weight)
         self.activation = nn.Softmax(dim=-1)
+
+        # smarter, but works for self attention only
+        # qkv = nn.Linear(in, out*3, no bias)
+        # q, k, v = qkv(x).chunk(chunks=3, dim=-1)
         
     def forward(self, q, k, v, m):
         q = self.linear_queries(q)
@@ -82,6 +88,7 @@ class MaskedMultiHeadAttention(nn.Module):
             [MaskedAttentionHead(d_model, h) for i in range(h)]
         )
         self.linear = nn.Linear(in_features=d_model, out_features=d_model)
+        nn.init.xavier_normal_(self.linear.weight)
 
     def forward(self, v, k, q, m):
         y = [head(q, k, v, m) for head in self.attention_heads]
@@ -119,7 +126,7 @@ class DecoderLayer(nn.Module):
 
     def forward(self, x0, x1, m):
         y0 = self.masked_multi_head_attention(x0, x0, x0, m)
-        y1 = self.dropout(y0) + x0 #.mul(m.unsqueeze(dim=-1).unsqueeze(dim=-1))
+        y1 = self.dropout(y0) + x0#.mul(m.unsqueeze(dim=-1).unsqueeze(dim=-1))
         y2 = self.layer_norm(y1)
         y3 = self.multi_head_attention(y2, x1, x1)
         y4 = self.dropout(y3) + y2
@@ -128,29 +135,6 @@ class DecoderLayer(nn.Module):
         y7 = self.dropout(y6) + y5
         y8 = self.layer_norm(y7)
         return y8
-    
-
-class EmbeddingLayer(nn.Module):
-    def __init__(self, d_model, num_tokens):
-        super(EmbeddingLayer, self).__init__()
-        #PE(pos, 2i) = sin(pos/10000**(2i/d_model))
-        #PE(pos, 2i+1) = cos(pos/10000**(2i/d_model))
-        self.token_embeddings = nn.Parameter(torch.randn(num_tokens, d_model).mul(d_model**0.5), requires_grad=True)
-        self.sine = lambda pos, j : torch.sin(pos.div(torch.tensor(10000).pow(j/d_model)))
-        self.cosine = lambda pos, j : torch.cos(pos.div(torch.tensor(10000).pow(j/d_model)))
-        self.dropout = nn.Dropout(p=0.1)
-
-    def forward(self, x):
-        y1 = self.token_embeddings[x]
-        y2 = torch.zeros_like(y1).to(dtype=y1.dtype)
-        pos = torch.arange(y1.size(1))
-        for i in range(int(y1.size(2)/2)):
-            y2[:, :, 2*i] = self.sine(pos, 2*i)
-            y2[:, :, 2*i+1] = self.cosine(pos, 2*i)
-
-        y3 = self.dropout(y1 + y2)
-        return y3
-    
 
 class TransformerModel(nn.Module):
     def __init__(self, d_model, h, l, num_tokens):
@@ -161,32 +145,61 @@ class TransformerModel(nn.Module):
         self.decoder_layers = nn.ModuleList(
             [DecoderLayer(d_model, h) for i in range(l)]
         )
-        self.embedding_layer = EmbeddingLayer(d_model, num_tokens)
         self.linear = nn.Linear(in_features=d_model, out_features=num_tokens)
+        nn.init.xavier_normal_(self.linear.weight)
+
+        self.token_embeddings_matrix = self.linear.weight #nn.Parameter(torch.randn(num_tokens, d_model), requires_grad=True)
+        self.token_embeddings_factor = d_model**0.5
+        self.sine = lambda pos, j : torch.sin(pos.div(torch.tensor(10000).pow(j/d_model)))
+        self.cosine = lambda pos, j : torch.cos(pos.div(torch.tensor(10000).pow(j/d_model)))
+        self.dropout = nn.Dropout(p=0.1)
         self.activation = nn.Softmax(dim=-1)
+
+    def get_position_embeddings(self, batch_size, sequence_length):
+        pos_emb = torch.zeros(batch_size, sequence_length, self.token_embeddings_matrix.size(1))
+        pos_emb = pos_emb.to(dtype=self.token_embeddings_matrix.dtype)
+        pos = torch.arange(pos_emb.size(1))
+        for i in range(int(pos_emb.size(2)/2)):
+            pos_emb[:, :, 2*i] = self.sine(pos, 2*i)
+            pos_emb[:, :, 2*i+1] = self.cosine(pos, 2*i)
+        
+        return pos_emb
 
     def forward_train(self, input_ids, input_mask, target_ids, target_mask):
         """Teacher forcing for next token prediction"""
-        
-        input_seq = self.embedding_layer(input_ids)
+
+        token_embeddings = self.token_embeddings_matrix[input_ids].mul(self.token_embeddings_factor)
+        positional_embeddings = self.get_position_embeddings(input_mask.size(0), input_mask.size(1))
+        input_seq = self.dropout(token_embeddings + positional_embeddings)
+
 
         encoder_hidden_states = []
         for encoder_layer in self.encoder_layers:
             input_seq = encoder_layer(input_seq, input_mask)
             encoder_hidden_states.append(input_seq)
 
-        output_mask = torch.zeros_like(input_mask).to(dtype=input_seq.dtype)
         output_ids = input_ids.clone().detach()
         output_probs = F.one_hot(output_ids, num_classes=self.linear.out_features).to(dtype=input_seq.dtype)
         output_ids[:, 1:] = 0
         output_probs[:, 1:, :] = 0
+
+        output_masks = torch.triu(torch.ones(output_ids.size(1), output_ids.size(1)-1)).T
+        output_masks = output_masks.unsqueeze(dim=1).repeat([1, output_ids.size(0), 1]).to(dtype=input_seq.dtype)
+
+        update_masks = torch.triu(torch.triu(torch.ones(output_ids.size(1), output_ids.size(1)-1)).T).flip([0, 1])
+        update_masks = update_masks.unsqueeze(dim=1).repeat([1, output_ids.size(0), 1]).to(dtype=input_seq.dtype)
+
         
         for i in range(1, output_ids.size(1)):
-            
-            output_mask = torch.zeros_like(input_mask).to(dtype=input_seq.dtype)
-            output_mask[:, :i] = 1
 
-            output_seq = self.embedding_layer((target_ids*output_mask.to(dtype=target_ids.dtype)))
+            #output_mask = torch.zeros_like(input_mask).to(dtype=input_seq.dtype)
+            #output_mask[:, :i] = 1
+            output_mask = output_masks[i-1]
+            
+            known_token_embeddings = self.token_embeddings_matrix[target_ids].mul(self.token_embeddings_factor)
+            known_token_embeddings = known_token_embeddings*output_mask.to(dtype=target_ids.dtype).unsqueeze(dim=-1)
+
+            output_seq = self.dropout(known_token_embeddings + positional_embeddings)
 
             for j, decoder_layer in enumerate(self.decoder_layers):
                 output_seq = decoder_layer(
@@ -197,8 +210,9 @@ class TransformerModel(nn.Module):
 
             output_logits = self.linear(output_seq)
             
-            update_mask = torch.zeros_like(input_ids)
-            update_mask[:, i] = 1
+            #update_mask = torch.zeros_like(input_ids)
+            #update_mask[:, i] = 1
+            update_mask = update_masks[i-1]
             
             output_probs = output_probs + torch.mul(update_mask.unsqueeze(dim=-1), self.activation(output_logits))
             output_ids = output_ids + torch.mul(update_mask, output_probs.argmax(dim=-1))
@@ -208,14 +222,15 @@ class TransformerModel(nn.Module):
     def forward_eval(self, input_ids, input_mask):
         """Autoregressive output generation"""
         
-        input_seq = self.embedding_layer(input_ids)
+        token_embeddings = self.token_embeddings_matrix[input_ids].mul(self.token_embeddings_factor)
+        positional_embeddings = self.get_position_embeddings(input_mask.size(0), input_mask.size(1))
+        input_seq = self.dropout(token_embeddings + positional_embeddings)
 
         encoder_hidden_states = []
         for encoder_layer in self.encoder_layers:
             input_seq = encoder_layer(input_seq, input_mask)
             encoder_hidden_states.append(input_seq)
 
-        output_mask = torch.zeros_like(input_mask).to(dtype=input_seq.dtype)
         output_ids = input_ids.clone().detach()
         output_probs = F.one_hot(output_ids, num_classes=self.linear.out_features).to(dtype=input_seq.dtype)
         output_ids[:, 1:] = 0
@@ -223,10 +238,13 @@ class TransformerModel(nn.Module):
         
         for i in range(1, output_ids.size(1)):
             
-            output_seq = self.embedding_layer(output_ids)
-            
             output_mask = torch.zeros_like(input_mask).to(dtype=input_seq.dtype)
             output_mask[:, :i] = 1
+
+            known_token_embeddings = self.token_embeddings_matrix[output_ids].mul(self.token_embeddings_factor)
+            known_token_embeddings = known_token_embeddings*output_mask.to(dtype=output_ids.dtype).unsqueeze(dim=-1)
+
+            output_seq = self.dropout(known_token_embeddings + positional_embeddings)
 
             for j, decoder_layer in enumerate(self.decoder_layers):
                 output_seq = decoder_layer(
