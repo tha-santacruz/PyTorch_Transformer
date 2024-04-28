@@ -48,7 +48,8 @@ class Experiment():
         
         token_weights = torch.ones(self.cfg.VOCAB_SIZE)
         token_weights[1] = 0 # PAD token
-        token_weights[3] = 1/10000 # EOS token
+        token_weights[2] = 0 # PAD token
+        token_weights[3] = 1/100 # EOS token
         self.criterion = nn.CrossEntropyLoss(weight=token_weights, label_smoothing=0.1, reduction="mean").to(device=self.cfg.DEVICE)
         self.scaler = torch.cuda.amp.GradScaler()
 
@@ -65,10 +66,11 @@ class Experiment():
         round_loss = 0.0
         round_acc = 0.0
         batch_num = 0
-        pbar = tqdm(loader)
+        #pbar = tqdm(loader)
 
 
-        for batch in pbar:
+        #for batch in pbar:
+        for batch in loader:
             self.optimizer.zero_grad()
 
             input_ids = batch[0].to(dtype=torch.int64, device=self.cfg.DEVICE)
@@ -96,7 +98,7 @@ class Experiment():
                 success = (pred_ids==target_ids)[target_mask==1]
                 acc = success.sum()/success.size(-1)
             
-            pbar.set_description(f"Last batch train loss and accuracy : {loss.item():.2f}, {acc.item():.2f}")
+            #pbar.set_description(f"Last batch train loss and accuracy : {loss.item():.2f}, {acc.item():.2f}")
             round_loss += loss.item()
             round_acc += acc.item()
             batch_num += 1
@@ -116,8 +118,10 @@ class Experiment():
         round_loss = 0.0
         round_acc = 0.0
         batch_num = 0
-        pbar = tqdm(loader)
-        for batch in pbar:
+        #pbar = tqdm(loader)
+        #for batch in pbar:
+        
+        for batch in loader:
             input_ids = batch[0].to(dtype=torch.int64, device=self.cfg.DEVICE)
             input_mask = batch[1].to(dtype=self.default_dtype, device=self.cfg.DEVICE)
             target_ids = batch[2].to(dtype=torch.int64, device=self.cfg.DEVICE)
@@ -130,10 +134,14 @@ class Experiment():
                 success = (pred_ids==target_ids)[target_mask==1]
                 acc = success.sum()/success.size(-1)
             
-            pbar.set_description(f"Last batch val loss and accuracy : {loss.item():.2f}, {acc.item():.2f}")
+            #pbar.set_description(f"Last batch val loss and accuracy : {loss.item():.2f}, {acc.item():.2f}")
+            
             round_loss += loss.item()
             round_acc += acc.item()
             batch_num += 1
+
+        print(self.dataset.tokenizer.decode(input_ids[0].detach().cpu().tolist()))
+        print(self.dataset.tokenizer.decode(pred_ids[0].detach().cpu().tolist()))
 
         return round_loss/batch_num, round_acc/batch_num
 
