@@ -155,8 +155,8 @@ class TransformerModel(nn.Module):
         self.dropout = nn.Dropout(p=0.1)
         self.activation = nn.Softmax(dim=-1)
 
-    def get_position_embeddings(self, batch_size, sequence_length):
-        pos_emb = torch.zeros(batch_size, sequence_length, self.token_embeddings_matrix.size(1))
+    def get_position_embeddings(self, batch_size, sequence_length, device):
+        pos_emb = torch.zeros(batch_size, sequence_length, self.token_embeddings_matrix.size(1)).to(device=device)
         pos_emb = pos_emb.to(dtype=self.token_embeddings_matrix.dtype)
         pos = torch.arange(pos_emb.size(1))
         for i in range(int(pos_emb.size(2)/2)):
@@ -169,7 +169,7 @@ class TransformerModel(nn.Module):
         """Teacher forcing for next token prediction"""
 
         token_embeddings = self.token_embeddings_matrix[input_ids].mul(self.token_embeddings_factor)
-        positional_embeddings = self.get_position_embeddings(input_mask.size(0), input_mask.size(1))
+        positional_embeddings = self.get_position_embeddings(input_mask.size(0), input_mask.size(1), input_mask.device)
         input_seq = self.dropout(token_embeddings + positional_embeddings)
 
 
@@ -184,10 +184,10 @@ class TransformerModel(nn.Module):
         output_probs[:, 1:, :] = 0
 
         output_masks = torch.triu(torch.ones(output_ids.size(1), output_ids.size(1)-1)).T
-        output_masks = output_masks.unsqueeze(dim=1).repeat([1, output_ids.size(0), 1]).to(dtype=input_seq.dtype)
+        output_masks = output_masks.unsqueeze(dim=1).repeat([1, output_ids.size(0), 1]).to(dtype=input_seq.dtype, device=input_seq.device)
 
         update_masks = torch.triu(torch.triu(torch.ones(output_ids.size(1), output_ids.size(1)-1)).T).flip([0, 1])
-        update_masks = update_masks.unsqueeze(dim=1).repeat([1, output_ids.size(0), 1]).to(dtype=input_seq.dtype)
+        update_masks = update_masks.unsqueeze(dim=1).repeat([1, output_ids.size(0), 1]).to(dtype=input_seq.dtype, device=input_seq.device)
 
         
         for i in range(1, output_ids.size(1)):
@@ -223,7 +223,7 @@ class TransformerModel(nn.Module):
         """Autoregressive output generation"""
         
         token_embeddings = self.token_embeddings_matrix[input_ids].mul(self.token_embeddings_factor)
-        positional_embeddings = self.get_position_embeddings(input_mask.size(0), input_mask.size(1))
+        positional_embeddings = self.get_position_embeddings(input_mask.size(0), input_mask.size(1), input_mask.device)
         input_seq = self.dropout(token_embeddings + positional_embeddings)
 
         encoder_hidden_states = []
