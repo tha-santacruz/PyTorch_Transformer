@@ -48,8 +48,7 @@ class Experiment():
         
         token_weights = torch.ones(self.cfg.VOCAB_SIZE)
         token_weights[1] = 0 # PAD token
-        token_weights[2] = 0 # PAD token
-        token_weights[3] = 1/100 # EOS token
+        token_weights[2] = 0 # BOS token
         self.criterion = nn.CrossEntropyLoss(weight=token_weights, label_smoothing=0.1, reduction="mean").to(device=self.cfg.DEVICE)
         self.scaler = torch.cuda.amp.GradScaler()
 
