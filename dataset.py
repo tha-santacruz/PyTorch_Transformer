@@ -1,5 +1,6 @@
 import os
 import linecache
+import random
 
 import pandas as pd
 import torch
@@ -37,6 +38,7 @@ class OpusTranslationDataset():
         
         self.indices = {}
         self.indices["all"] = [i for i in range(self.num_examples)]
+        random.Random(42).shuffle(self.indices["all"])
         self.indices["set"] = self.indices["all"]
         self.indices["test"] = self.indices["all"][:test_examples]
         self.indices["val"] = self.indices["all"][test_examples:test_examples+val_examples]
