@@ -51,6 +51,8 @@ def get_tokenizer(tokenizer_path, reference_corpora, vocab_size=30000, sequence_
     return tokenizer
   
 if __name__ == "__main__":
-    tokenizer = get_tokenizer("trials/trial_tokenizer", "trials/lorem.txt", 30000, 32)
-    output = tokenizer.encode("This is an example sentence that is rather short 😀")
+    tokenizer = get_tokenizer("trials/trial_tokenizer", "trials/lorem.txt", 30000, 48)
+    output = tokenizer.encode("This is an example sentence with an unknown token 😀")
+
     print(output.tokens)
+    print(tokenizer.decode(output.ids, skip_special_tokens=False))
