@@ -49,6 +49,7 @@ class Experiment():
         token_weights = torch.ones(self.cfg.VOCAB_SIZE)
         token_weights[1] = 0 # PAD token
         token_weights[2] = 0 # BOS token
+        token_weights[3] = 1/10 # EOS token
         self.criterion = nn.CrossEntropyLoss(weight=token_weights, label_smoothing=0.1, reduction="mean").to(device=self.cfg.DEVICE)
         self.scaler = torch.cuda.amp.GradScaler()
 
@@ -65,11 +66,11 @@ class Experiment():
         round_loss = 0.0
         round_acc = 0.0
         batch_num = 0
-        #pbar = tqdm(loader)
+        pbar = tqdm(loader)
 
 
-        #for batch in pbar:
-        for batch in loader:
+        for batch in pbar:
+        #for batch in loader:
             self.optimizer.zero_grad()
 
             input_ids = batch[0].to(dtype=torch.int64, device=self.cfg.DEVICE)
@@ -97,10 +98,14 @@ class Experiment():
                 success = (pred_ids==target_ids)[target_mask==1]
                 acc = success.sum()/success.size(-1)
             
-            #pbar.set_description(f"Last batch train loss and accuracy : {loss.item():.2f}, {acc.item():.2f}")
+            pbar.set_description(f"Last batch train loss and accuracy : {loss.item():.2f}, {acc.item():.2f}")
             round_loss += loss.item()
             round_acc += acc.item()
             batch_num += 1
+
+            if batch_num % 1000 == 0:
+                val_loss, val_acc = self.eval_round()
+                print(f"Validation performance at {batch_num} steps : validation loss : {val_loss:.4f} | validation accuracy {val_acc:.4f}")
 
         return round_loss/batch_num, round_acc/batch_num
     
@@ -117,9 +122,7 @@ class Experiment():
         round_loss = 0.0
         round_acc = 0.0
         batch_num = 0
-        #pbar = tqdm(loader)
-        #for batch in pbar:
-        
+
         for batch in loader:
             input_ids = batch[0].to(dtype=torch.int64, device=self.cfg.DEVICE)
             input_mask = batch[1].to(dtype=self.default_dtype, device=self.cfg.DEVICE)
@@ -133,30 +136,33 @@ class Experiment():
                 success = (pred_ids==target_ids)[target_mask==1]
                 acc = success.sum()/success.size(-1)
             
-            #pbar.set_description(f"Last batch val loss and accuracy : {loss.item():.2f}, {acc.item():.2f}")
-            
             round_loss += loss.item()
             round_acc += acc.item()
             batch_num += 1
 
+        print("input")
+        print(input_ids[0].detach().cpu().tolist())
         print(self.dataset.tokenizer.decode(input_ids[0].detach().cpu().tolist()))
+        print("output")
+        print(pred_ids[0].detach().cpu().tolist())
         print(self.dataset.tokenizer.decode(pred_ids[0].detach().cpu().tolist()))
+
+        val_loss = round_loss/batch_num
+        if val_loss < self.best_val_loss:
+            if self.cfg.SAVE_CHECKPOINTS:
+                torch.save(self.net.state_dict(), f"checkpoints/{self.cfg.SAVE_CHECKPOINTS}.pt")
+            self.best_val_loss = val_loss
 
         return round_loss/batch_num, round_acc/batch_num
 
     def train(self):
         
-        best_val_loss = 1e9
+        self.best_val_loss = 1e9
 
         for epoch in range(self.cfg.EPOCH_NUM):
             train_loss, train_acc = self.train_round()
             val_loss, val_acc = self.eval_round()
             
-            if val_loss < best_val_loss:
-                if self.cfg.SAVE_CHECKPOINTS:
-                    torch.save(self.net.state_dict(), f"checkpoints/{self.cfg.SAVE_CHECKPOINTS}.pt")
-                best_val_loss = val_loss
-
             print(f"Metrics after epoch {epoch+1} : train loss : {train_loss:.4f} | train accuracy : {train_acc:.4f} | validation loss : {val_loss:.4f} | validation accuracy {val_acc:.4f}")
 
     def test(self):
