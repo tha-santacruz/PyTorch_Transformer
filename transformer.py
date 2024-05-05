@@ -192,8 +192,6 @@ class TransformerModel(nn.Module):
         
         for i in range(1, output_ids.size(1)):
 
-            #output_mask = torch.zeros_like(input_mask).to(dtype=input_seq.dtype)
-            #output_mask[:, :i] = 1
             output_mask = output_masks[i-1]
             
             known_token_embeddings = self.token_embeddings_matrix[target_ids].mul(self.token_embeddings_factor)
@@ -210,11 +208,10 @@ class TransformerModel(nn.Module):
 
             output_logits = self.linear(output_seq)
             
-            #update_mask = torch.zeros_like(input_ids)
-            #update_mask[:, i] = 1
             update_mask = update_masks[i-1]
             
             output_probs = output_probs + torch.mul(update_mask.unsqueeze(dim=-1), self.activation(output_logits))
+
             output_ids = output_ids + torch.mul(update_mask, output_probs.argmax(dim=-1))
 
         return output_probs, output_ids
@@ -235,11 +232,15 @@ class TransformerModel(nn.Module):
         output_probs = F.one_hot(output_ids, num_classes=self.linear.out_features).to(dtype=input_seq.dtype)
         output_ids[:, 1:] = 0
         output_probs[:, 1:, :] = 0
+
+        output_masks = torch.triu(torch.ones(output_ids.size(1), output_ids.size(1)-1)).T
+        output_masks = output_masks.unsqueeze(dim=1).repeat([1, output_ids.size(0), 1]).to(dtype=input_seq.dtype, device=input_seq.device)
+
+        update_masks = torch.triu(torch.triu(torch.ones(output_ids.size(1), output_ids.size(1)-1)).T).flip([0, 1])
+        update_masks = update_masks.unsqueeze(dim=1).repeat([1, output_ids.size(0), 1]).to(dtype=input_seq.dtype, device=input_seq.device)
         
         for i in range(1, output_ids.size(1)):
-            
-            output_mask = torch.zeros_like(input_mask).to(dtype=input_seq.dtype)
-            output_mask[:, :i] = 1
+            output_mask = output_masks[i-1]
 
             known_token_embeddings = self.token_embeddings_matrix[output_ids].mul(self.token_embeddings_factor)
             known_token_embeddings = known_token_embeddings*output_mask.to(dtype=output_ids.dtype).unsqueeze(dim=-1)
@@ -255,12 +256,11 @@ class TransformerModel(nn.Module):
 
             output_logits = self.linear(output_seq)
             
-            update_mask = torch.zeros_like(input_ids)
-            update_mask[:, i] = 1
+            update_mask = update_masks[i-1]
             
             output_probs = output_probs + torch.mul(update_mask.unsqueeze(dim=-1), self.activation(output_logits))
-            output_ids = output_ids + torch.mul(update_mask, output_probs.argmax(dim=-1))
-            
+            output_ids = output_ids + torch.mul(update_mask, output_probs.argmax(dim=-1)).long()
+
         return output_probs, output_ids
     
     def forward(self, input_ids, input_mask, target_ids=None, target_mask=None):
