@@ -212,7 +212,11 @@ class TransformerModel(nn.Module):
             
             output_probs = output_probs + torch.mul(update_mask.unsqueeze(dim=-1), self.activation(output_logits))
 
-            output_ids = output_ids + torch.mul(update_mask, output_probs.argmax(dim=-1))
+            weights = output_probs.topk(k=10, dim=-1)[0][:, i].pow(0.3)
+            weights = weights.div(weights.sum(dim=-1).unsqueeze(dim=-1))
+
+            output_ids = output_ids + torch.mul(update_mask, torch.multinomial(weights, 1, replacement=True))
+            #output_ids = output_ids + torch.mul(update_mask, output_probs.argmax(dim=-1))
 
         return output_probs, output_ids
     
