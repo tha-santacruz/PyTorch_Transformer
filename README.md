@@ -48,7 +48,7 @@ decoding = tokenizer.decode(ids, skip_special_tokens=False)
 ```
 
 ## Dataset
-The dataset class is meant to process datasets that have the following structure, which is adopted from the [OPUS Corpora](https://opus.nlpl.eu)
+The dataset class is meant to process datasets that have the following structure, which is adopted from [OPUS Corpora](https://opus.nlpl.eu)
 
 - The data is made of two main files
 - One file contains the source text sequences and the other one contains the targets
@@ -62,7 +62,7 @@ Entries are shuffled with a fixed random state for reproducibility.
 Entries are then split in training, validation and testing examples using the number of examples in the dataset and the amount of validation and testing examples provided by the user.
 By default, all entries are accessible through the ```getitem``` method. the ```use_set``` method allows to swap between sets ```all```, ```train```, ```val```, ```test```.
 
-The usage if the dataset class is as follows
+The usage of the dataset class is as follows
 ```python
 from dataset import OpusTranslationDataset
 from torch.utils.data import DataLoader
@@ -89,5 +89,52 @@ batch = next(itet(dataloader))
 source_ids, source_masks, target_ids, target_masks = batch
 ```
 
+## Transformer
+The transformer model implementation is mainly based on the original paper by Vaswani et al [1].
+It has two distinct forward methods to be used for training and evaluation. It is built so that it can be trained on any sequence size, with the constraint that the input and target maximal sequence sizes (a.k.a. the length of the attention mask) must be the same.
+
+The first one is used in train mode and produces next tokens using teacher forcing. This means that at each time step, the next token is predicted based on ground truth token instead of the generated ones. In addition, the next token is sampled among the top-10 largest probability tokens. The sampling weights are the probabilities (i.e. after softmax) to the power of 0.2. This is intended to avoid systematically outputting [EOS] tokens (or other really common ones) and thus improve the building of the representation of other tokens.
+
+The second one simply predicts outputs in an autoregressive manner as described in the paper. It uses a greedy decoding procedure as well. It is used when the model is in evaluation mode.
+
+The usage of the transformer module is as follows
+```python
+from transformer import TransformerModel
+
+# Compute device
+device = "cuda:0"
+
+# Model declaration
+net = TransformerModel(
+    d_model=512, 
+    h=8,
+    l=6, 
+    num_tokens=30000
+).to(device=device)
+
+# Making of dummy inputs and targets
+sequence_length = 128
+batch_size = 4
+input_ids = torch.randn(batch_size, sequence_length).to(dtype=torch.int64, device=device)
+input_mask = torch.ones(batch_size, sequence_length).to(dtype=torch.float32, device=device)
+target_ids = torch.randn(batch_size, sequence_length).to(dtype=torch.int64, device=device)
+target_mask = torch.ones(batch_size, sequence_length).to(dtype=torch.float32, device=device)
+
+# Prediction in train mode (with teacher forcing)
+net.train()
+probs, ids = net(
+    input_ids, 
+    input_mask,
+    target_ids,
+    target_mask 
+)
+
+# Prediction in evaluation mode (autoregressively)
+net.val()
+probs, ids = net(
+    input_ids, 
+    input_mask,
+)
+```
 ## References
 [1] Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A. N., ... & Polosukhin, I. (2017). Attention is all you need. Advances in neural information processing systems, 30.
