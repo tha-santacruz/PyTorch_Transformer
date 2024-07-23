@@ -7,6 +7,8 @@ from torch.utils.data import DataLoader
 from dataset import OpusTranslationDataset
 from transformer import TransformerModel
 
+import time
+
 class Experiment():
     def __init__(self, cfg):
         self.cfg = cfg
@@ -68,15 +70,25 @@ class Experiment():
         batch_num = 0
         pbar = tqdm(loader)
 
+        t = time.time()
 
         for batch in pbar:
         #for batch in loader:
+		print(f"got batch : {time.time()-t}")
+		t = time.time()
+
             self.optimizer.zero_grad()
+
+		print(f"zero_grad : {time.time()-t}")
+		t = time.time()
 
             input_ids = batch[0].to(dtype=torch.int64, device=self.cfg.DEVICE)
             input_mask = batch[1].to(dtype=self.default_dtype, device=self.cfg.DEVICE)
             target_ids = batch[2].to(dtype=torch.int64, device=self.cfg.DEVICE)
             target_mask = batch[3].to(dtype=self.default_dtype)
+
+            print(f"device swap : {time.time()-t}")
+		t = time.time()
 
             with torch.cuda.amp.autocast():
                 pred_probs, pred_ids = probs, ids = self.net(
@@ -85,14 +97,23 @@ class Experiment():
                     target_ids,
                     target_mask 
                 )
+
+            print(f"pred : {time.time()-t}")
+		t = time.time()
             
             loss = self.criterion(pred_probs.view(-1, pred_probs.size(-1)), target_ids.view(-1))
             self.scaler.scale(loss).backward()
             self.scaler.unscale_(self.optimizer)
             nn.utils.clip_grad_norm(self.net.parameters(), 1.0)
 
+            print(f"loss : {time.time()-t}")
+		t = time.time()
+
             self.scaler.step(self.optimizer)
             self.scaler.update()
+
+            print(f"update : {time.time()-t}")
+		t = time.time()
 
             with torch.no_grad():
                 success = (pred_ids==target_ids)[target_mask==1]
@@ -102,6 +123,9 @@ class Experiment():
             round_loss += loss.item()
             round_acc += acc.item()
             batch_num += 1
+
+            print(f"metric : {time.time()-t}")
+		t = time.time()
 
             if batch_num % 1000 == 0:
                 val_loss, val_acc = self.eval_round()
@@ -170,7 +194,4 @@ class Experiment():
         
             test_loss, test_acc = self.eval_round(evaluatated_set="test")
 
-            print(f"Metrics at test time : test loss : {test_loss:.4f} | test accuracy : {test_acc:.4f}")        
-
-        
-    
+            print(f"Metrics at test time : test loss : {test_loss:.4f} | test accuracy : {test_acc:.4f}")
